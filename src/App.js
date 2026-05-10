@@ -1,39 +1,44 @@
 import React, { useState, useEffect } from "react";
 
-// ── Mock Data ──────────────────────────────────────────────────────────────────
-const USERS = {
-  "client@htaconstruction.com": {
-    password: "hta2024",
-    company: "HTA Construction & Development",
-    logo: "HTA",
-    package: 3,
-    color: "#D4A843",
-    ar: [
-      { invoice: "INV-001", client: "Proyecto Mirador", amount: 45000, due: "2026-05-15", status: "Pending" },
-      { invoice: "INV-002", client: "Edificio Norte", amount: 128000, due: "2026-04-30", status: "Overdue" },
-      { invoice: "INV-003", client: "Residencial Vega", amount: 67500, due: "2026-06-01", status: "Pending" },
-    ],
-    financials: { income: 485000, cogs: 312000, overhead: 54000 },
+const SUPABASE_URL = "https://wwtltludfnhamqdkpraw.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3dGx0bHVkZm5oYW1xZGtwcmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjAwNDgsImV4cCI6MjA5MzkzNjA0OH0.TZNAR-s37RkGxkKO2q5219u9HUL612GyLWMp8-dPpRI";
+
+const db = {
+  get: async (table, query = "") => {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" }
+    });
+    return res.json();
   },
-  "demo@legacy.com": {
-    password: "demo123",
-    company: "Demo Company LLC",
-    logo: "DC",
-    package: 2,
-    color: "#6C8EBF",
-    ar: [],
-    financials: { income: 210000, cogs: 145000, overhead: 28000 },
+  post: async (table, body) => {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(body)
+    });
+    return res.json();
   },
+  patch: async (table, id, body) => {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  },
+  delete: async (table, id) => {
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+  }
 };
 
-const PACKAGES = {
-  1: { name: "Package 1", features: ["Monthly P&L Report", "Basic Bookkeeping", "Tax Filing Support"] },
-  2: { name: "Package 2", features: ["Monthly P&L Report", "Full Bookkeeping", "Tax Filing Support", "A/R Tracking"] },
-  3: { name: "Package 3", features: ["Monthly P&L Report", "Full Bookkeeping", "Tax Filing Support", "A/R Tracking", "Financial Projections", "Pricing Analysis", "Budget Planning"] },
-};
+const ADMIN_EMAIL = "admin@legacytax.com";
+const ADMIN_PASSWORD = "Legacy2024!";
 
-const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-const pct = (a, b) => b ? ((a / b) * 100).toFixed(1) + "%" : "—";
+const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
+const pct = (a, b) => b ? ((a / b) * 100).toFixed(1) + "%" : "0.0%";
 
 const GOLD = "#C9A84C";
 const DARK = "#0F1117";
@@ -42,40 +47,50 @@ const SIDEBAR_BG = "#0B0E18";
 const TEXT = "#E8EAF0";
 const MUTED = "#6B7280";
 
-// ── Responsive Hook ────────────────────────────────────────────────────────────
+const PACKAGES = {
+  1: { name: "Package 1", features: ["Monthly P&L Report", "Basic Bookkeeping", "Tax Filing Support"] },
+  2: { name: "Package 2", features: ["Monthly P&L Report", "Full Bookkeeping", "Tax Filing Support", "A/R Tracking"] },
+  3: { name: "Package 3", features: ["Monthly P&L Report", "Full Bookkeeping", "Tax Filing Support", "A/R Tracking", "Financial Projections", "Pricing Analysis", "Budget Planning"] },
+};
+
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
   }, []);
   return isMobile;
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
-  if (!user) return <Login onLogin={(u) => { setUser(u); setPage("dashboard"); }} />;
+  const [isAdmin, setIsAdmin] = useState(false);
+  if (!user) return <Login onLogin={(u, admin) => { setUser(u); setIsAdmin(admin); setPage("dashboard"); }} />;
+  if (isAdmin) return <AdminPortal onLogout={() => { setUser(null); setIsAdmin(false); }} />;
   return <Portal user={user} page={page} setPage={setPage} onLogout={() => setUser(null)} />;
 }
 
-// ── Login ─────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handle = () => {
+  const handle = async () => {
     setLoading(true); setError("");
-    setTimeout(() => {
-      const u = USERS[email.toLowerCase()];
-      if (u && u.password === pass) { onLogin({ ...u, email }); }
-      else { setError("Invalid credentials. Please try again."); }
-      setLoading(false);
-    }, 700);
+    if (email.toLowerCase() === ADMIN_EMAIL && pass === ADMIN_PASSWORD) {
+      onLogin({ email, company: "Legacy Tax & Strategy" }, true);
+      setLoading(false); return;
+    }
+    try {
+      const data = await db.get("clients", `?email=eq.${email.toLowerCase()}&active=eq.true`);
+      if (data && data.length > 0 && data[0].password === pass) {
+        onLogin(data[0], false);
+      } else { setError("Invalid credentials. Please try again."); }
+    } catch { setError("Connection error. Please try again."); }
+    setLoading(false);
   };
 
   return (
@@ -87,33 +102,231 @@ function Login({ onLogin }) {
         </div>
         <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${GOLD}55, transparent)`, margin: "20px 0" }} />
         <p style={{ textAlign: "center", color: MUTED, fontSize: 12, letterSpacing: 2, marginBottom: 28 }}>CLIENT PORTAL</p>
-
         {[{ label: "Email", type: "email", val: email, set: setEmail, ph: "your@email.com" },
           { label: "Password", type: "password", val: pass, set: setPass, ph: "••••••••" }].map(f => (
           <div key={f.label} style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 11, letterSpacing: 1.5, color: MUTED, marginBottom: 6, textTransform: "uppercase" }}>{f.label}</label>
             <input style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "12px 14px", color: TEXT, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-              type={f.type} placeholder={f.ph} value={f.val}
-              onChange={e => f.set(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handle()} />
+              type={f.type} placeholder={f.ph} value={f.val} onChange={e => f.set(e.target.value)} onKeyDown={e => e.key === "Enter" && handle()} />
           </div>
         ))}
-
         {error && <p style={{ color: "#E55", fontSize: 13, marginBottom: 12, textAlign: "center" }}>{error}</p>}
         <button style={{ width: "100%", background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: 14, fontSize: 13, letterSpacing: 2, fontWeight: 700, cursor: "pointer", marginTop: 8, textTransform: "uppercase", fontFamily: "Georgia, serif", opacity: loading ? 0.7 : 1 }}
-          onClick={handle} disabled={loading}>
-          {loading ? "Signing in…" : "Sign In"}
-        </button>
+          onClick={handle} disabled={loading}>{loading ? "Signing in…" : "Sign In"}</button>
         <p style={{ textAlign: "center", color: "#3A3F52", fontSize: 11, marginTop: 20, letterSpacing: 1 }}>Access provided by Legacy Tax & Strategy</p>
       </div>
     </div>
   );
 }
 
-// ── Portal Shell ──────────────────────────────────────────────────────────────
+function AdminPortal({ onLogout }) {
+  const [clients, setClients] = useState([]);
+  const [page, setPage] = useState("clients");
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editClient, setEditClient] = useState(null);
+  const isMobile = useIsMobile();
+  const emptyForm = { email: "", password: "", company: "", logo: "", package: 1, color: "#C9A84C", active: true };
+  const [form, setForm] = useState(emptyForm);
+  const [saved, setSaved] = useState("");
+
+  const loadClients = async () => {
+    setLoading(true);
+    const data = await db.get("clients", "?order=created_at.desc");
+    setClients(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadClients(); }, []);
+
+  const saveClient = async () => {
+    if (!form.email || !form.password || !form.company || !form.logo) return;
+    if (editClient) { await db.patch("clients", editClient.id, form); setSaved("Client updated."); }
+    else { await db.post("clients", form); setSaved("Client added."); }
+    setShowForm(false); setEditClient(null); setForm(emptyForm);
+    loadClients(); setTimeout(() => setSaved(""), 2500);
+  };
+
+  const toggleActive = async (c) => { await db.patch("clients", c.id, { active: !c.active }); loadClients(); };
+
+  const openEdit = (c) => {
+    setEditClient(c);
+    setForm({ email: c.email, password: c.password, company: c.company, logo: c.logo, package: c.package, color: c.color, active: c.active });
+    setShowForm(true);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", minHeight: "100vh", background: DARK, fontFamily: "Georgia, serif", color: TEXT }}>
+      {!isMobile && (
+        <aside style={{ width: 220, background: SIDEBAR_BG, borderRight: "1px solid #1E2235", display: "flex", flexDirection: "column", padding: "28px 0", position: "sticky", top: 0, height: "100vh" }}>
+          <div style={{ padding: "0 24px 24px", borderBottom: "1px solid #1E2235" }}>
+            <span style={{ display: "block", fontSize: 18, letterSpacing: 6, color: GOLD, fontWeight: 700 }}>LEGACY</span>
+            <span style={{ display: "block", fontSize: 8, letterSpacing: 3, color: MUTED, marginTop: 3 }}>ADMIN PANEL</span>
+          </div>
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid #1E2235" }}>
+            <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>Signed in as</p>
+            <p style={{ fontSize: 12, fontWeight: 700, margin: "4px 0 0", color: GOLD }}>Administrator</p>
+          </div>
+          <nav style={{ flex: 1, padding: "16px 0" }}>
+            {[{ id: "clients", label: "Clients", icon: "◉" }, { id: "financials", label: "Financials", icon: "◈" }].map(n => (
+              <button key={n.id} onClick={() => setPage(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 24px", background: page === n.id ? "#C9A84C11" : "none", border: "none", borderRight: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 13, cursor: "pointer", textAlign: "left" }}>
+                <span>{n.icon}</span>{n.label}
+              </button>
+            ))}
+          </nav>
+          <button onClick={onLogout} style={{ background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", padding: "16px 24px", textAlign: "left" }}>← Sign Out</button>
+        </aside>
+      )}
+      {isMobile && (
+        <div style={{ background: SIDEBAR_BG, borderBottom: "1px solid #1E2235", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div><span style={{ fontSize: 16, letterSpacing: 6, color: GOLD, fontWeight: 700 }}>LEGACY</span><span style={{ fontSize: 9, letterSpacing: 2, color: MUTED, marginLeft: 6 }}>ADMIN</span></div>
+          <button onClick={onLogout} style={{ background: "none", border: "none", color: MUTED, fontSize: 12, cursor: "pointer" }}>← Out</button>
+        </div>
+      )}
+      <main style={{ flex: 1, padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
+        {page === "clients" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+              <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0 }}>Clients</h1>
+              <button onClick={() => { setShowForm(!showForm); setEditClient(null); setForm(emptyForm); }} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                {showForm ? "Cancel" : "+ New Client"}
+              </button>
+            </div>
+            {saved && <div style={{ background: "#1A9E6C22", border: "1px solid #1A9E6C55", color: "#1A9E6C", padding: "10px 16px", borderRadius: 2, fontSize: 13, marginBottom: 16 }}>✓ {saved}</div>}
+            {showForm && (
+              <div style={{ background: CARD_BG, border: `1px solid ${GOLD}44`, borderRadius: 2, padding: 24, marginBottom: 20 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 16px", color: GOLD }}>{editClient ? "Edit Client" : "New Client"}</h3>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 16 }}>
+                  {[{ key: "email", label: "Email", type: "email", ph: "client@company.com" }, { key: "password", label: "Password", type: "text", ph: "client123" }, { key: "company", label: "Company Name", type: "text", ph: "Company LLC" }, { key: "logo", label: "Logo Initials (2-3 letters)", type: "text", ph: "ABC" }, { key: "color", label: "Brand Color", type: "color", ph: "" }].map(f => (
+                    <div key={f.key}>
+                      <label style={{ display: "block", fontSize: 10, letterSpacing: 1.5, color: MUTED, marginBottom: 6, textTransform: "uppercase" }}>{f.label}</label>
+                      <input style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: f.type === "color" ? "4px 8px" : "10px 12px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box", height: f.type === "color" ? 42 : "auto" }}
+                        type={f.type} placeholder={f.ph} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
+                    </div>
+                  ))}
+                  <div>
+                    <label style={{ display: "block", fontSize: 10, letterSpacing: 1.5, color: MUTED, marginBottom: 6, textTransform: "uppercase" }}>Package</label>
+                    <select style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "10px 12px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                      value={form.package} onChange={e => setForm({ ...form, package: Number(e.target.value) })}>
+                      <option value={1}>Package 1</option><option value={2}>Package 2</option><option value={3}>Package 3</option>
+                    </select>
+                  </div>
+                </div>
+                <button onClick={saveClient} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "12px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" }}>
+                  {editClient ? "Save Changes" : "Create Client"}
+                </button>
+              </div>
+            )}
+            {loading ? <p style={{ color: MUTED, padding: 20 }}>Loading…</p> : (
+              <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2 }}>
+                {clients.length === 0 ? <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No clients yet.</p> :
+                  clients.map(c => (
+                    <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #1E2235", display: "flex", alignItems: "center", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 2, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{c.logo}</div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 2px" }}>{c.company}</p>
+                        <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{c.email} · Package {c.package}</p>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: c.active ? "#1A9E6C22" : "#C0392B22", color: c.active ? "#1A9E6C" : "#C0392B" }}>{c.active ? "Active" : "Inactive"}</span>
+                        <button onClick={() => openEdit(c)} style={{ background: "#1E2235", border: "none", color: TEXT, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Edit</button>
+                        <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: c.active ? "#C0392B" : "#1A9E6C", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>{c.active ? "Disable" : "Enable"}</button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </>
+        )}
+        {page === "financials" && <AdminFinancials clients={clients} isMobile={isMobile} />}
+      </main>
+      {isMobile && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: SIDEBAR_BG, borderTop: "1px solid #1E2235", display: "flex", zIndex: 100 }}>
+          {[{ id: "clients", label: "Clients", icon: "◉" }, { id: "financials", label: "Financials", icon: "◈" }].map(n => (
+            <button key={n.id} onClick={() => setPage(n.id)} style={{ flex: 1, padding: "12px 4px", background: "none", border: "none", borderTop: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 16 }}>{n.icon}</span><span>{n.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminFinancials({ clients, isMobile }) {
+  const [selectedId, setSelectedId] = useState("");
+  const [financials, setFinancials] = useState(null);
+  const [form, setForm] = useState({ income: "", cogs: "", overhead: "", period: new Date().toISOString().slice(0, 7) });
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const loadFinancials = async (clientId) => {
+    setLoading(true);
+    const data = await db.get("financials", `?client_id=eq.${clientId}&order=created_at.desc&limit=1`);
+    if (data && data.length > 0) { setFinancials(data[0]); setForm({ income: data[0].income, cogs: data[0].cogs, overhead: data[0].overhead, period: data[0].period }); }
+    else { setFinancials(null); setForm({ income: "", cogs: "", overhead: "", period: new Date().toISOString().slice(0, 7) }); }
+    setLoading(false);
+  };
+
+  const saveFinancials = async () => {
+    if (!selectedId) return;
+    const payload = { client_id: selectedId, income: Number(form.income), cogs: Number(form.cogs), overhead: Number(form.overhead), period: form.period };
+    if (financials) { await db.patch("financials", financials.id, payload); }
+    else { await db.post("financials", payload); }
+    setSaved(true); setTimeout(() => setSaved(false), 2500);
+    loadFinancials(selectedId);
+  };
+
+  const income = Number(form.income) || 0;
+  const cogs = Number(form.cogs) || 0;
+  const overhead = Number(form.overhead) || 0;
+  const netIncome = income - cogs - overhead;
+
+  return (
+    <div>
+      <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: "0 0 24px" }}>Financials</h1>
+      <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 20 }}>
+        <label style={{ display: "block", fontSize: 10, letterSpacing: 1.5, color: MUTED, marginBottom: 8, textTransform: "uppercase" }}>Select Client</label>
+        <select style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "10px 12px", color: TEXT, fontSize: 14, outline: "none" }}
+          value={selectedId} onChange={e => { setSelectedId(e.target.value); if (e.target.value) loadFinancials(e.target.value); }}>
+          <option value="">— Choose a client —</option>
+          {clients.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.company}</option>)}
+        </select>
+      </div>
+      {selectedId && !loading && (
+        <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 20 }}>
+          <h3 style={{ fontSize: 12, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>{financials ? "Update Financials" : "Add Financials"}</h3>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 16 }}>
+            {[{ key: "period", label: "Period (YYYY-MM)", type: "month" }, { key: "income", label: "Total Income ($)", type: "number" }, { key: "cogs", label: "COGS ($)", type: "number" }, { key: "overhead", label: "Overhead ($)", type: "number" }].map(f => (
+              <div key={f.key}>
+                <label style={{ display: "block", fontSize: 10, letterSpacing: 1.5, color: MUTED, marginBottom: 6, textTransform: "uppercase" }}>{f.label}</label>
+                <input style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "10px 12px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                  type={f.type} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
+              </div>
+            ))}
+          </div>
+          <div style={{ background: "#0F1117", border: "1px solid #1E2235", borderRadius: 2, padding: 16, marginBottom: 16 }}>
+            <p style={{ fontSize: 10, letterSpacing: 2, color: MUTED, margin: "0 0 12px", textTransform: "uppercase" }}>Preview</p>
+            {[{ label: "Income", val: income, color: "#1A9E6C" }, { label: "COGS", val: cogs, color: "#C0392B" }, { label: "Overhead", val: overhead, color: "#E67E22" }, { label: "Net Income", val: netIncome, color: netIncome >= 0 ? "#1A9E6C" : "#C0392B" }].map(r => (
+              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #1E2235", fontSize: 13 }}>
+                <span style={{ color: MUTED }}>{r.label}</span>
+                <span style={{ color: r.color, fontWeight: 700 }}>{fmt(r.val)}</span>
+              </div>
+            ))}
+          </div>
+          {saved && <div style={{ background: "#1A9E6C22", border: "1px solid #1A9E6C55", color: "#1A9E6C", padding: "10px 16px", borderRadius: 2, fontSize: 13, marginBottom: 12 }}>✓ Financials saved</div>}
+          <button onClick={saveFinancials} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "12px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" }}>Save Financials</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Portal({ user, page, setPage, onLogout }) {
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [financials, setFinancials] = useState(null);
+  const [arEntries, setArEntries] = useState([]);
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
@@ -122,33 +335,26 @@ function Portal({ user, page, setPage, onLogout }) {
     { id: "profile", label: "Profile", icon: "◎" },
   ];
 
+  useEffect(() => {
+    db.get("financials", `?client_id=eq.${user.id}&order=created_at.desc&limit=1`).then(data => { if (data && data.length > 0) setFinancials(data[0]); });
+    if (user.package >= 2) { db.get("ar_entries", `?client_id=eq.${user.id}&order=created_at.desc`).then(data => { setArEntries(data || []); }); }
+  }, [user.id, user.package]);
+
   const goTo = (id) => { setPage(id); setMenuOpen(false); };
 
   return (
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", minHeight: "100vh", background: DARK, fontFamily: "Georgia, serif", color: TEXT }}>
-
-      {/* ── Mobile Top Bar ── */}
       {isMobile && (
         <div style={{ background: SIDEBAR_BG, borderBottom: "1px solid #1E2235", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100 }}>
-          <div>
-            <span style={{ fontSize: 16, letterSpacing: 6, color: GOLD, fontWeight: 700 }}>LEGACY</span>
-            <span style={{ fontSize: 8, letterSpacing: 3, color: MUTED, marginLeft: 4 }}>TAX & STRATEGY</span>
-          </div>
-          <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: GOLD, fontSize: 22, cursor: "pointer", padding: 4 }}>
-            {menuOpen ? "✕" : "☰"}
-          </button>
+          <div><span style={{ fontSize: 16, letterSpacing: 6, color: GOLD, fontWeight: 700 }}>LEGACY</span><span style={{ fontSize: 8, letterSpacing: 3, color: MUTED, marginLeft: 4 }}>TAX & STRATEGY</span></div>
+          <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: GOLD, fontSize: 22, cursor: "pointer", padding: 4 }}>{menuOpen ? "✕" : "☰"}</button>
         </div>
       )}
-
-      {/* ── Mobile Dropdown Menu ── */}
       {isMobile && menuOpen && (
         <div style={{ background: SIDEBAR_BG, borderBottom: "1px solid #1E2235", position: "sticky", top: 53, zIndex: 99 }}>
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #1E2235", display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 2, background: user.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff" }}>{user.logo}</div>
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{user.company}</p>
-              <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{PACKAGES[user.package].name}</p>
-            </div>
+            <div><p style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>{user.company}</p><p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{PACKAGES[user.package].name}</p></div>
           </div>
           {nav.map(n => (
             <button key={n.id} onClick={() => goTo(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "14px 20px", background: page === n.id ? "#C9A84C11" : "none", border: "none", borderLeft: page === n.id ? `3px solid ${GOLD}` : "3px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 14, cursor: "pointer", textAlign: "left" }}>
@@ -158,8 +364,6 @@ function Portal({ user, page, setPage, onLogout }) {
           <button onClick={onLogout} style={{ display: "block", width: "100%", padding: "14px 20px", background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", textAlign: "left" }}>← Sign Out</button>
         </div>
       )}
-
-      {/* ── Desktop Sidebar ── */}
       {!isMobile && (
         <aside style={{ width: 220, background: SIDEBAR_BG, borderRight: "1px solid #1E2235", display: "flex", flexDirection: "column", padding: "28px 0", position: "sticky", top: 0, height: "100vh" }}>
           <div style={{ padding: "0 24px 24px", borderBottom: "1px solid #1E2235" }}>
@@ -168,37 +372,29 @@ function Portal({ user, page, setPage, onLogout }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 24px", borderBottom: "1px solid #1E2235" }}>
             <div style={{ width: 36, height: 36, borderRadius: 2, background: user.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{user.logo}</div>
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, margin: 0, color: TEXT }}>{user.company}</p>
-              <p style={{ fontSize: 10, color: MUTED, margin: 0, marginTop: 2, letterSpacing: 1 }}>{PACKAGES[user.package].name}</p>
-            </div>
+            <div><p style={{ fontSize: 12, fontWeight: 700, margin: 0, color: TEXT }}>{user.company}</p><p style={{ fontSize: 10, color: MUTED, margin: 0, marginTop: 2 }}>{PACKAGES[user.package].name}</p></div>
           </div>
           <nav style={{ flex: 1, padding: "16px 0" }}>
             {nav.map(n => (
-              <button key={n.id} onClick={() => setPage(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 24px", background: page === n.id ? "#C9A84C11" : "none", border: "none", borderRight: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 13, cursor: "pointer", textAlign: "left", letterSpacing: 0.5 }}>
+              <button key={n.id} onClick={() => setPage(n.id)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 24px", background: page === n.id ? "#C9A84C11" : "none", border: "none", borderRight: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 13, cursor: "pointer", textAlign: "left" }}>
                 <span style={{ fontSize: 14 }}>{n.icon}</span>{n.label}
               </button>
             ))}
           </nav>
-          <button onClick={onLogout} style={{ background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", padding: "16px 24px", textAlign: "left", letterSpacing: 1 }}>← Sign Out</button>
+          <button onClick={onLogout} style={{ background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", padding: "16px 24px", textAlign: "left" }}>← Sign Out</button>
         </aside>
       )}
-
-      {/* ── Main Content ── */}
       <main style={{ flex: 1, overflowY: "auto", background: DARK }}>
-        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} />}
-        {page === "financials" && <Financials user={user} isMobile={isMobile} />}
-        {page === "ar" && <AR user={user} isMobile={isMobile} />}
+        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} financials={financials} arEntries={arEntries} />}
+        {page === "financials" && <Financials user={user} isMobile={isMobile} financials={financials} />}
+        {page === "ar" && <AR user={user} isMobile={isMobile} arEntries={arEntries} setArEntries={setArEntries} />}
         {page === "profile" && <Profile user={user} isMobile={isMobile} />}
       </main>
-
-      {/* ── Mobile Bottom Nav ── */}
       {isMobile && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: SIDEBAR_BG, borderTop: "1px solid #1E2235", display: "flex", zIndex: 100 }}>
           {nav.map(n => (
-            <button key={n.id} onClick={() => { goTo(n.id); setMenuOpen(false); }} style={{ flex: 1, padding: "12px 4px", background: "none", border: "none", borderTop: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 16 }}>{n.icon}</span>
-              <span style={{ letterSpacing: 0.5 }}>{n.label}</span>
+            <button key={n.id} onClick={() => goTo(n.id)} style={{ flex: 1, padding: "12px 4px", background: "none", border: "none", borderTop: page === n.id ? `2px solid ${GOLD}` : "2px solid transparent", color: page === n.id ? GOLD : MUTED, fontSize: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 16 }}>{n.icon}</span><span>{n.label}</span>
             </button>
           ))}
         </div>
@@ -207,108 +403,94 @@ function Portal({ user, page, setPage, onLogout }) {
   );
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({ user, setPage, isMobile }) {
-  const { income, cogs, overhead } = user.financials;
+function Dashboard({ user, setPage, isMobile, financials, arEntries }) {
+  const income = financials?.income || 0;
+  const cogs = financials?.cogs || 0;
+  const overhead = financials?.overhead || 0;
   const netIncome = income - cogs - overhead;
-
+  const overdueAR = arEntries.filter(a => a.status === "Overdue");
   const cards = [
     { label: "Total Income", value: fmt(income), sub: "This period", color: "#1A9E6C" },
     { label: "COGS", value: fmt(cogs), sub: pct(cogs, income) + " of income", color: "#C0392B" },
     { label: "Overhead", value: fmt(overhead), sub: pct(overhead, income) + " of income", color: "#E67E22" },
     { label: "Net Income", value: fmt(netIncome), sub: pct(netIncome, income) + " margin", color: netIncome >= 0 ? "#1A9E6C" : "#C0392B" },
   ];
-  const overdueAR = user.ar.filter(a => a.status === "Overdue");
-
   return (
     <div style={{ padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 24 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0, letterSpacing: 1 }}>Dashboard</h1>
-        <span style={{ fontSize: 11, color: MUTED, letterSpacing: 1 }}>{new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0 }}>Dashboard</h1>
+        <span style={{ fontSize: 11, color: MUTED }}>{financials?.period || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
       </div>
-
+      {!financials && <div style={{ background: "#C9A84C11", border: "1px solid #C9A84C33", borderRadius: 2, padding: 16, marginBottom: 20, fontSize: 13, color: GOLD }}>Your financials are being prepared by Legacy Tax & Strategy.</div>}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map(c => (
-          <div key={c.label} style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: isMobile ? "14px" : "20px 22px" }}>
+          <div key={c.label} style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: isMobile ? 14 : "20px 22px" }}>
             <p style={{ fontSize: 9, letterSpacing: 2, color: MUTED, margin: "0 0 8px", textTransform: "uppercase" }}>{c.label}</p>
             <p style={{ fontSize: isMobile ? 16 : 22, fontWeight: 700, margin: "0 0 4px", color: c.color }}>{c.value}</p>
             <p style={{ fontSize: 10, color: MUTED, margin: 0 }}>{c.sub}</p>
           </div>
         ))}
       </div>
-
-      <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 16 }}>
-        <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Income Breakdown</h2>
-        {[{ label: "COGS", val: cogs, color: "#C0392B" }, { label: "Overhead", val: overhead, color: "#E67E22" }, { label: "Net Income", val: Math.max(netIncome, 0), color: "#1A9E6C" }].map(b => (
-          <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 11, color: MUTED, width: isMobile ? 70 : 100, flexShrink: 0 }}>{b.label}</span>
-            <div style={{ flex: 1, height: 8, background: "#1E2235", borderRadius: 1, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: pct(b.val, income), background: b.color, borderRadius: 1 }} />
+      {income > 0 && (
+        <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Income Breakdown</h2>
+          {[{ label: "COGS", val: cogs, color: "#C0392B" }, { label: "Overhead", val: overhead, color: "#E67E22" }, { label: "Net Income", val: Math.max(netIncome, 0), color: "#1A9E6C" }].map(b => (
+            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, color: MUTED, width: isMobile ? 70 : 100, flexShrink: 0 }}>{b.label}</span>
+              <div style={{ flex: 1, height: 8, background: "#1E2235", borderRadius: 1, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: pct(b.val, income), background: b.color, borderRadius: 1 }} />
+              </div>
+              <span style={{ fontSize: 11, color: TEXT, width: isMobile ? 70 : 90, textAlign: "right", flexShrink: 0 }}>{fmt(b.val)}</span>
             </div>
-            <span style={{ fontSize: 11, color: TEXT, width: isMobile ? 70 : 90, textAlign: "right", flexShrink: 0 }}>{fmt(b.val)}</span>
-          </div>
-        ))}
-      </div>
-
+          ))}
+        </div>
+      )}
       {overdueAR.length > 0 && (
         <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderLeft: "3px solid #C0392B", borderRadius: 2, padding: 20 }}>
           <h2 style={{ fontSize: 11, letterSpacing: 2, color: "#C0392B", textTransform: "uppercase", margin: "0 0 12px" }}>⚠ Overdue A/R</h2>
           {overdueAR.map(a => (
-            <div key={a.invoice} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1E2235", fontSize: 13 }}>
-              <span>{a.invoice} — {a.client}</span>
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #1E2235", fontSize: 13 }}>
+              <span>{a.invoice} — {a.client_name}</span>
               <span style={{ color: "#C0392B", fontWeight: 700 }}>{fmt(a.amount)}</span>
             </div>
           ))}
-          <button onClick={() => setPage("ar")} style={{ background: "none", border: "none", color: GOLD, fontSize: 12, cursor: "pointer", padding: "10px 0 0", letterSpacing: 1 }}>View all A/R →</button>
+          <button onClick={() => setPage("ar")} style={{ background: "none", border: "none", color: GOLD, fontSize: 12, cursor: "pointer", padding: "10px 0 0" }}>View all A/R →</button>
         </div>
       )}
     </div>
   );
 }
 
-// ── Financials ────────────────────────────────────────────────────────────────
-function Financials({ user, isMobile }) {
-  const { income, cogs, overhead } = user.financials;
+function Financials({ user, isMobile, financials }) {
+  const income = financials?.income || 0;
+  const cogs = financials?.cogs || 0;
+  const overhead = financials?.overhead || 0;
   const grossProfit = income - cogs;
   const netIncome = grossProfit - overhead;
-
   const rows = [
-    { label: "Total Income", value: income, bold: false, accent: false },
-    { label: "Cost of Goods Sold (COGS)", value: -cogs, bold: false, accent: false },
-    { label: "Gross Profit", value: grossProfit, bold: true, accent: false },
-    { label: "Overhead", value: -overhead, bold: false, accent: false },
+    { label: "Total Income", value: income }, { label: "Cost of Goods Sold (COGS)", value: -cogs },
+    { label: "Gross Profit", value: grossProfit, bold: true }, { label: "Overhead", value: -overhead },
     { label: "Net Income", value: netIncome, bold: true, accent: true },
   ];
-
-  const metrics = [
-    { label: "Gross Margin", value: pct(grossProfit, income), desc: "Profit after COGS" },
-    { label: "Net Margin", value: pct(netIncome, income), desc: "Final profitability" },
-    { label: "Overhead Ratio", value: pct(overhead, income), desc: "Fixed cost burden" },
-    { label: "COGS Ratio", value: pct(cogs, income), desc: "Direct cost efficiency" },
-  ];
-
   return (
     <div style={{ padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
-      <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: 1 }}>Financials</h1>
-
+      <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: "0 0 24px" }}>Financials</h1>
+      {!financials && <div style={{ background: "#C9A84C11", border: "1px solid #C9A84C33", borderRadius: 2, padding: 16, marginBottom: 20, fontSize: 13, color: GOLD }}>Your financials are being prepared. Check back soon.</div>}
       <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Profit & Loss Statement</h2>
+        <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Profit & Loss — {financials?.period || "—"}</h2>
         {rows.map(r => (
-          <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #1E2235", fontSize: isMobile ? 13 : 14, fontWeight: r.bold ? 700 : 400, background: r.accent ? "#C9A84C08" : "transparent", color: r.accent ? GOLD : TEXT }}>
+          <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #1E2235", fontSize: isMobile ? 13 : 14, fontWeight: r.bold ? 700 : 400, color: r.accent ? GOLD : TEXT }}>
             <span>{r.label}</span>
-            <span style={{ color: r.value < 0 ? "#C0392B" : r.accent ? "#1A9E6C" : "inherit" }}>
-              {r.value < 0 ? `(${fmt(Math.abs(r.value))})` : fmt(r.value)}
-            </span>
+            <span style={{ color: r.value < 0 ? "#C0392B" : r.accent ? "#1A9E6C" : "inherit" }}>{r.value < 0 ? `(${fmt(Math.abs(r.value))})` : fmt(r.value)}</span>
           </div>
         ))}
       </div>
-
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 12 }}>
-        {metrics.map(m => (
+        {[{ label: "Gross Margin", value: pct(grossProfit, income), desc: "Profit after COGS" }, { label: "Net Margin", value: pct(netIncome, income), desc: "Final profitability" }, { label: "Overhead Ratio", value: pct(overhead, income), desc: "Fixed cost burden" }, { label: "COGS Ratio", value: pct(cogs, income), desc: "Direct cost efficiency" }].map(m => (
           <div key={m.label} style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 16, textAlign: "center" }}>
             <p style={{ fontSize: isMobile ? 20 : 26, fontWeight: 700, color: GOLD, margin: "0 0 4px" }}>{m.value}</p>
             <p style={{ fontSize: 11, color: TEXT, margin: "0 0 4px", fontWeight: 600 }}>{m.label}</p>
-            <p style={{ fontSize: 9, color: MUTED, margin: 0, letterSpacing: 1 }}>{m.desc}</p>
+            <p style={{ fontSize: 9, color: MUTED, margin: 0 }}>{m.desc}</p>
           </div>
         ))}
       </div>
@@ -316,48 +498,41 @@ function Financials({ user, isMobile }) {
   );
 }
 
-// ── A/R ───────────────────────────────────────────────────────────────────────
-function AR({ user, isMobile }) {
-  const [entries, setEntries] = useState(user.ar);
-  const [form, setForm] = useState({ invoice: "", client: "", amount: "", due: "", status: "Pending" });
+function AR({ user, isMobile, arEntries, setArEntries }) {
+  const [form, setForm] = useState({ invoice: "", client_name: "", amount: "", due_date: "", status: "Pending" });
   const [adding, setAdding] = useState(false);
   const [saved, setSaved] = useState(false);
+  const totalAR = arEntries.reduce((s, e) => s + Number(e.amount), 0);
+  const overdueAR = arEntries.filter(e => e.status === "Overdue").reduce((s, e) => s + Number(e.amount), 0);
 
-  const totalAR = entries.reduce((s, e) => s + Number(e.amount), 0);
-  const overdueAR = entries.filter(e => e.status === "Overdue").reduce((s, e) => s + Number(e.amount), 0);
-
-  const addEntry = () => {
-    if (!form.invoice || !form.client || !form.amount) return;
-    setEntries([...entries, { ...form, amount: Number(form.amount) }]);
-    setForm({ invoice: "", client: "", amount: "", due: "", status: "Pending" });
-    setAdding(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const addEntry = async () => {
+    if (!form.invoice || !form.client_name || !form.amount) return;
+    const payload = { ...form, amount: Number(form.amount), client_id: user.id };
+    const data = await db.post("ar_entries", payload);
+    if (data && data.length > 0) setArEntries([data[0], ...arEntries]);
+    setForm({ invoice: "", client_name: "", amount: "", due_date: "", status: "Pending" });
+    setAdding(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
   return (
     <div style={{ padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0, letterSpacing: 1 }}>Accounts Receivable</h1>
-        <button onClick={() => setAdding(!adding)} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1 }}>
-          {adding ? "Cancel" : "+ Add"}
-        </button>
+        <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0 }}>Accounts Receivable</h1>
+        <button onClick={() => setAdding(!adding)} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{adding ? "Cancel" : "+ Add"}</button>
       </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
-        {[{ label: "Total A/R", val: fmt(totalAR), color: "#1A5C9E" }, { label: "Overdue", val: fmt(overdueAR), color: "#C0392B" }, { label: "Open Invoices", val: entries.length, color: "#1A5C9E" }].map(c => (
+        {[{ label: "Total A/R", val: fmt(totalAR), color: "#1A5C9E" }, { label: "Overdue", val: fmt(overdueAR), color: "#C0392B" }, { label: "Invoices", val: arEntries.length, color: "#1A5C9E" }].map(c => (
           <div key={c.label} style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: isMobile ? 12 : 20 }}>
             <p style={{ fontSize: 9, letterSpacing: 2, color: MUTED, margin: "0 0 6px", textTransform: "uppercase" }}>{c.label}</p>
             <p style={{ fontSize: isMobile ? 14 : 22, fontWeight: 700, margin: 0, color: c.color }}>{c.val}</p>
           </div>
         ))}
       </div>
-
       {adding && (
         <div style={{ background: CARD_BG, border: `1px solid ${GOLD}44`, borderRadius: 2, padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 16px", color: GOLD, letterSpacing: 1 }}>New A/R Entry</h3>
+          <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 16px", color: GOLD }}>New A/R Entry</h3>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 14 }}>
-            {[{ key: "invoice", label: "Invoice #", type: "text", ph: "INV-004" }, { key: "client", label: "Client / Project", type: "text", ph: "Project name" }, { key: "amount", label: "Amount ($)", type: "number", ph: "0" }, { key: "due", label: "Due Date", type: "date", ph: "" }].map(f => (
+            {[{ key: "invoice", label: "Invoice #", type: "text", ph: "INV-004" }, { key: "client_name", label: "Client / Project", type: "text", ph: "Project name" }, { key: "amount", label: "Amount ($)", type: "number", ph: "0" }, { key: "due_date", label: "Due Date", type: "date", ph: "" }].map(f => (
               <div key={f.key}>
                 <label style={{ display: "block", fontSize: 10, letterSpacing: 1.5, color: MUTED, marginBottom: 6, textTransform: "uppercase" }}>{f.label}</label>
                 <input style={{ width: "100%", background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "10px 12px", color: TEXT, fontSize: 14, outline: "none", boxSizing: "border-box" }}
@@ -372,58 +547,47 @@ function AR({ user, isMobile }) {
               </select>
             </div>
           </div>
-          <button onClick={addEntry} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "12px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: 1, textTransform: "uppercase" }}>Save Entry</button>
+          <button onClick={addEntry} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "12px 24px", fontSize: 13, fontWeight: 700, cursor: "pointer", textTransform: "uppercase" }}>Save Entry</button>
         </div>
       )}
-
       {saved && <div style={{ background: "#1A9E6C22", border: "1px solid #1A9E6C55", color: "#1A9E6C", padding: "10px 16px", borderRadius: 2, fontSize: 13, marginBottom: 16 }}>✓ Entry saved</div>}
-
       <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2 }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid #1E2235", fontSize: 10, letterSpacing: 2, color: MUTED, textTransform: "uppercase" }}>Invoice List</div>
-        {entries.length === 0 ? (
-          <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No A/R entries yet.</p>
-        ) : isMobile ? (
-          entries.map((e, i) => (
-            <div key={i} style={{ padding: "14px 16px", borderBottom: "1px solid #1E2235" }}>
+        {arEntries.length === 0 ? <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No A/R entries yet.</p> :
+          isMobile ? arEntries.map(e => (
+            <div key={e.id} style={{ padding: "14px 16px", borderBottom: "1px solid #1E2235" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{e.invoice}</span>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(e.amount)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: MUTED }}>{e.client}</span>
+                <span style={{ fontSize: 12, color: MUTED }}>{e.client_name}</span>
                 <span style={{ padding: "2px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: e.status === "Paid" ? "#1A9E6C22" : e.status === "Overdue" ? "#C0392B22" : "#1A5C9E22", color: e.status === "Paid" ? "#1A9E6C" : e.status === "Overdue" ? "#C0392B" : "#1A5C9E" }}>{e.status}</span>
               </div>
-              {e.due && <p style={{ fontSize: 11, color: MUTED, margin: "4px 0 0" }}>Due: {e.due}</p>}
             </div>
-          ))
-        ) : (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", padding: "10px 16px", background: "#0B0E18", fontSize: 10, letterSpacing: 2, color: MUTED, textTransform: "uppercase" }}>
-              <span>Invoice</span><span>Client</span><span>Amount</span><span>Due</span><span>Status</span>
-            </div>
-            {entries.map((e, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", padding: "12px 16px", borderTop: "1px solid #1E2235", fontSize: 13, alignItems: "center" }}>
-                <span style={{ fontWeight: 600 }}>{e.invoice}</span>
-                <span>{e.client}</span>
-                <span>{fmt(e.amount)}</span>
-                <span>{e.due || "—"}</span>
-                <span style={{ padding: "3px 10px", borderRadius: 2, fontSize: 11, fontWeight: 600, background: e.status === "Paid" ? "#1A9E6C22" : e.status === "Overdue" ? "#C0392B22" : "#1A5C9E22", color: e.status === "Paid" ? "#1A9E6C" : e.status === "Overdue" ? "#C0392B" : "#1A5C9E" }}>{e.status}</span>
+          )) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", padding: "10px 16px", background: "#0B0E18", fontSize: 10, letterSpacing: 2, color: MUTED, textTransform: "uppercase" }}>
+                <span>Invoice</span><span>Client</span><span>Amount</span><span>Due</span><span>Status</span>
               </div>
-            ))}
-          </>
-        )}
+              {arEntries.map(e => (
+                <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", padding: "12px 16px", borderTop: "1px solid #1E2235", fontSize: 13, alignItems: "center" }}>
+                  <span style={{ fontWeight: 600 }}>{e.invoice}</span><span>{e.client_name}</span><span>{fmt(e.amount)}</span><span>{e.due_date || "—"}</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 2, fontSize: 11, fontWeight: 600, background: e.status === "Paid" ? "#1A9E6C22" : e.status === "Overdue" ? "#C0392B22" : "#1A5C9E22", color: e.status === "Paid" ? "#1A9E6C" : e.status === "Overdue" ? "#C0392B" : "#1A5C9E" }}>{e.status}</span>
+                </div>
+              ))}
+            </>
+          )}
       </div>
     </div>
   );
 }
 
-// ── Profile ───────────────────────────────────────────────────────────────────
 function Profile({ user, isMobile }) {
   const pkg = PACKAGES[user.package];
   return (
     <div style={{ padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
-      <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: "0 0 24px", letterSpacing: 1 }}>Profile</h1>
-
+      <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: "0 0 24px" }}>Profile</h1>
       <div style={{ display: "flex", alignItems: "center", gap: 20, background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 24, marginBottom: 16 }}>
         <div style={{ width: isMobile ? 50 : 64, height: isMobile ? 50 : 64, borderRadius: 2, background: user.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: isMobile ? 14 : 18, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{user.logo}</div>
         <div>
@@ -432,7 +596,6 @@ function Profile({ user, isMobile }) {
           <span style={{ padding: "3px 10px", borderRadius: 2, fontSize: 11, fontWeight: 600, background: "#1A5C9E22", color: "#6CA0D4" }}>{pkg.name}</span>
         </div>
       </div>
-
       <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20, marginBottom: 16 }}>
         <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Your Package Includes</h2>
         {pkg.features.map(f => (
@@ -441,7 +604,6 @@ function Profile({ user, isMobile }) {
           </div>
         ))}
       </div>
-
       <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: 20 }}>
         <h2 style={{ fontSize: 11, letterSpacing: 2, color: MUTED, textTransform: "uppercase", margin: "0 0 16px" }}>Your Advisor</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
