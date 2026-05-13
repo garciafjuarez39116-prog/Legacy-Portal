@@ -46,6 +46,7 @@ const CARD_BG = "#181C27";
 const SIDEBAR_BG = "#0B0E18";
 const TEXT = "#E8EAF0";
 const MUTED = "#6B7280";
+const QB_GREEN = "#2CA01C";
 
 const PACKAGES = {
   1: { name: "Package 1", features: ["Monthly P&L Report", "Basic Bookkeeping", "Tax Filing Support"] },
@@ -67,6 +68,14 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("qb_connected") === "true") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   if (!user) return <Login onLogin={(u, admin) => { setUser(u); setIsAdmin(admin); setPage("dashboard"); }} />;
   if (isAdmin) return <AdminPortal onLogout={() => { setUser(null); setIsAdmin(false); }} />;
   return <Portal user={user} page={page} setPage={setPage} onLogout={() => setUser(null)} />;
@@ -155,6 +164,16 @@ function AdminPortal({ onLogout }) {
     setShowForm(true);
   };
 
+  const syncQB = async (c) => {
+    try {
+      const res = await fetch(`/api/qb-data?client_id=${c.id}`);
+      const data = await res.json();
+      if (data.success) setSaved(`QB synced for ${c.company}`);
+      else setSaved(`QB error: ${data.error}`);
+      setTimeout(() => setSaved(""), 3000);
+    } catch { setSaved("QB sync failed"); setTimeout(() => setSaved(""), 3000); }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", minHeight: "100vh", background: DARK, fontFamily: "Georgia, serif", color: TEXT }}>
       {!isMobile && (
@@ -231,6 +250,7 @@ function AdminPortal({ onLogout }) {
                         <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: c.active ? "#1A9E6C22" : "#C0392B22", color: c.active ? "#1A9E6C" : "#C0392B" }}>{c.active ? "Active" : "Inactive"}</span>
                         <button onClick={() => openEdit(c)} style={{ background: "#1E2235", border: "none", color: TEXT, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Edit</button>
                         <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: c.active ? "#C0392B" : "#1A9E6C", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>{c.active ? "Disable" : "Enable"}</button>
+                        <button onClick={() => syncQB(c)} style={{ background: "#1E2235", border: "none", color: QB_GREEN, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>↻ QB Sync</button>
                       </div>
                     </div>
                   ))}
@@ -327,6 +347,7 @@ function Portal({ user, page, setPage, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [financials, setFinancials] = useState(null);
   const [arEntries, setArEntries] = useState([]);
+  const [qbConnected, setQbConnected] = useState(false);
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
@@ -338,7 +359,10 @@ function Portal({ user, page, setPage, onLogout }) {
   useEffect(() => {
     db.get("financials", `?client_id=eq.${user.id}&order=created_at.desc&limit=1`).then(data => { if (data && data.length > 0) setFinancials(data[0]); });
     if (user.package >= 2) { db.get("ar_entries", `?client_id=eq.${user.id}&order=created_at.desc`).then(data => { setArEntries(data || []); }); }
+    db.get("qb_connections", `?client_id=eq.${user.id}`).then(data => { setQbConnected(data && data.length > 0); });
   }, [user.id, user.package]);
+
+  const connectQB = () => { window.location.href = `/api/qb-auth?client_id=${user.id}`; };
 
   const goTo = (id) => { setPage(id); setMenuOpen(false); };
 
@@ -381,11 +405,16 @@ function Portal({ user, page, setPage, onLogout }) {
               </button>
             ))}
           </nav>
+          <div style={{ padding: "16px 24px", borderTop: "1px solid #1E2235" }}>
+            <button onClick={qbConnected ? null : connectQB} style={{ width: "100%", background: qbConnected ? "#2CA01C22" : QB_GREEN, color: qbConnected ? "#2CA01C" : "#fff", border: qbConnected ? "1px solid #2CA01C55" : "none", borderRadius: 2, padding: "9px 12px", fontSize: 11, fontWeight: 700, cursor: qbConnected ? "default" : "pointer", letterSpacing: 0.5 }}>
+              {qbConnected ? "✓ QuickBooks Connected" : "Connect QuickBooks"}
+            </button>
+          </div>
           <button onClick={onLogout} style={{ background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", padding: "16px 24px", textAlign: "left" }}>← Sign Out</button>
         </aside>
       )}
       <main style={{ flex: 1, overflowY: "auto", background: DARK }}>
-        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} financials={financials} arEntries={arEntries} />}
+        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} financials={financials} arEntries={arEntries} qbConnected={qbConnected} connectQB={connectQB} />}
         {page === "financials" && <Financials user={user} isMobile={isMobile} financials={financials} />}
         {page === "ar" && <AR user={user} isMobile={isMobile} arEntries={arEntries} setArEntries={setArEntries} />}
         {page === "profile" && <Profile user={user} isMobile={isMobile} />}
@@ -403,7 +432,7 @@ function Portal({ user, page, setPage, onLogout }) {
   );
 }
 
-function Dashboard({ user, setPage, isMobile, financials, arEntries }) {
+function Dashboard({ user, setPage, isMobile, financials, arEntries, qbConnected, connectQB }) {
   const income = financials?.income || 0;
   const cogs = financials?.cogs || 0;
   const overhead = financials?.overhead || 0;
@@ -421,6 +450,17 @@ function Dashboard({ user, setPage, isMobile, financials, arEntries }) {
         <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0 }}>Dashboard</h1>
         <span style={{ fontSize: 11, color: MUTED }}>{financials?.period || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
       </div>
+
+      {!qbConnected && (
+        <div style={{ background: "#2CA01C11", border: "1px solid #2CA01C44", borderRadius: 2, padding: 16, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: "#2CA01C", margin: "0 0 4px" }}>Connect QuickBooks</p>
+            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Sync your financials automatically every month</p>
+          </div>
+          <button onClick={connectQB} style={{ background: QB_GREEN, color: "#fff", border: "none", borderRadius: 2, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Connect →</button>
+        </div>
+      )}
+
       {!financials && <div style={{ background: "#C9A84C11", border: "1px solid #C9A84C33", borderRadius: 2, padding: 16, marginBottom: 20, fontSize: 13, color: GOLD }}>Your financials are being prepared by Legacy Tax & Strategy.</div>}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map(c => (
