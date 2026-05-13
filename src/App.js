@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const SUPABASE_URL = "https://wwtltludfnhamqdkpraw.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3dGx0bHVkZm5oYW1xZGtwcmF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzNjAwNDgsImV4cCI6MjA5MzkzNjA0OH0.TZNAR-s37RkGxkKO2q5219u9HUL612GyLWMp8-dPpRI";
+const ANTHROPIC_KEY = ""; // Add your key here when ready
 
 const db = {
   get: async (table, query = "") => {
@@ -68,14 +69,6 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("qb_connected") === "true") {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, []);
-
   if (!user) return <Login onLogin={(u, admin) => { setUser(u); setIsAdmin(admin); setPage("dashboard"); }} />;
   if (isAdmin) return <AdminPortal onLogout={() => { setUser(null); setIsAdmin(false); }} />;
   return <Portal user={user} page={page} setPage={setPage} onLogout={() => setUser(null)} />;
@@ -134,6 +127,7 @@ function AdminPortal({ onLogout }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editClient, setEditClient] = useState(null);
+  const [qbStatus, setQbStatus] = useState({});
   const isMobile = useIsMobile();
   const emptyForm = { email: "", password: "", company: "", logo: "", package: 1, color: "#C9A84C", active: true };
   const [form, setForm] = useState(emptyForm);
@@ -143,6 +137,10 @@ function AdminPortal({ onLogout }) {
     setLoading(true);
     const data = await db.get("clients", "?order=created_at.desc");
     setClients(data || []);
+    const conns = await db.get("qb_connections", "");
+    const statusMap = {};
+    (conns || []).forEach(c => { statusMap[c.client_id] = true; });
+    setQbStatus(statusMap);
     setLoading(false);
   };
 
@@ -164,14 +162,17 @@ function AdminPortal({ onLogout }) {
     setShowForm(true);
   };
 
+  const connectQB = (c) => { window.open(`/api/qb-auth?client_id=${c.id}`, "_blank"); };
+
   const syncQB = async (c) => {
+    setSaved(`Syncing QB for ${c.company}…`);
     try {
       const res = await fetch(`/api/qb-data?client_id=${c.id}`);
       const data = await res.json();
-      if (data.success) setSaved(`QB synced for ${c.company}`);
+      if (data.success) setSaved(`✓ QB synced for ${c.company}`);
       else setSaved(`QB error: ${data.error}`);
-      setTimeout(() => setSaved(""), 3000);
-    } catch { setSaved("QB sync failed"); setTimeout(() => setSaved(""), 3000); }
+    } catch { setSaved("QB sync failed"); }
+    setTimeout(() => setSaved(""), 3000);
   };
 
   return (
@@ -240,17 +241,29 @@ function AdminPortal({ onLogout }) {
               <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2 }}>
                 {clients.length === 0 ? <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No clients yet.</p> :
                   clients.map(c => (
-                    <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #1E2235", display: "flex", alignItems: "center", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                      <div style={{ width: 38, height: 38, borderRadius: 2, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{c.logo}</div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 2px" }}>{c.company}</p>
-                        <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{c.email} · Package {c.package}</p>
+                    <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #1E2235" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                        <div style={{ width: 38, height: 38, borderRadius: 2, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{c.logo}</div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 2px" }}>{c.company}</p>
+                          <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{c.email} · Package {c.package}</p>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: c.active ? "#1A9E6C22" : "#C0392B22", color: c.active ? "#1A9E6C" : "#C0392B" }}>{c.active ? "Active" : "Inactive"}</span>
+                          <button onClick={() => openEdit(c)} style={{ background: "#1E2235", border: "none", color: TEXT, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Edit</button>
+                          <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: c.active ? "#C0392B" : "#1A9E6C", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>{c.active ? "Disable" : "Enable"}</button>
+                        </div>
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: c.active ? "#1A9E6C22" : "#C0392B22", color: c.active ? "#1A9E6C" : "#C0392B" }}>{c.active ? "Active" : "Inactive"}</span>
-                        <button onClick={() => openEdit(c)} style={{ background: "#1E2235", border: "none", color: TEXT, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Edit</button>
-                        <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: c.active ? "#C0392B" : "#1A9E6C", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>{c.active ? "Disable" : "Enable"}</button>
-                        <button onClick={() => syncQB(c)} style={{ background: "#1E2235", border: "none", color: QB_GREEN, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>↻ QB Sync</button>
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #1E2235", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 10, color: MUTED, letterSpacing: 1 }}>QUICKBOOKS:</span>
+                        {qbStatus[c.id] ? (
+                          <>
+                            <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: "#2CA01C22", color: QB_GREEN }}>✓ Connected</span>
+                            <button onClick={() => syncQB(c)} style={{ background: "#1E2235", border: "none", color: QB_GREEN, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>↻ Sync Now</button>
+                          </>
+                        ) : (
+                          <button onClick={() => connectQB(c)} style={{ background: QB_GREEN, color: "#fff", border: "none", borderRadius: 2, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Connect QB</button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -342,12 +355,101 @@ function AdminFinancials({ clients, isMobile }) {
   );
 }
 
+function AIChat({ user, financials, arEntries, onClose }) {
+  const [messages, setMessages] = useState([
+    { role: "assistant", content: `Hola! Soy tu asistente financiero de Legacy Tax & Strategy. Puedo explicarte tus números, responderte preguntas sobre tu negocio o ayudarte a entender tus resultados. ¿En qué te puedo ayudar?` }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const messagesEnd = useRef(null);
+  const recognition = useRef(null);
+
+  const income = financials?.income || 0;
+  const cogs = financials?.cogs || 0;
+  const overhead = financials?.overhead || 0;
+  const netIncome = income - cogs - overhead;
+
+  const systemPrompt = `Eres el asistente financiero de Legacy Tax & Strategy. Estás hablando con ${user.company}.
+Sus datos financieros del período ${financials?.period || "actual"} son:
+- Ingresos totales: ${fmt(income)}
+- COGS (Costo de ventas): ${fmt(cogs)} (${pct(cogs, income)} del ingreso)
+- Overhead (Gastos fijos): ${fmt(overhead)} (${pct(overhead, income)} del ingreso)
+- Ingreso neto: ${fmt(netIncome)} (margen de ${pct(netIncome, income)})
+- Cuentas por cobrar abiertas: ${arEntries.length} facturas por un total de ${fmt(arEntries.reduce((s, e) => s + Number(e.amount), 0))}
+Responde de manera amigable, clara y en el idioma que te hablen (español o inglés). Sé conciso.`;
+
+  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = async (text) => {
+    if (!text.trim()) return;
+    if (!ANTHROPIC_KEY) {
+      setMessages(prev => [...prev, { role: "user", content: text }, { role: "assistant", content: "El asistente de IA estará disponible pronto. Contacta a Legacy Tax & Strategy para más información." }]);
+      setInput(""); return;
+    }
+    const userMsg = { role: "user", content: text };
+    setMessages(prev => [...prev, userMsg]);
+    setInput(""); setLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 500, system: systemPrompt, messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })) })
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || "Lo siento, no pude procesar tu pregunta.";
+      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+      if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(reply); u.lang = "es-MX"; window.speechSynthesis.speak(u); }
+    } catch { setMessages(prev => [...prev, { role: "assistant", content: "Error de conexión. Intenta de nuevo." }]); }
+    setLoading(false);
+  };
+
+  const startListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Usa Chrome para voz."); return; }
+    recognition.current = new SR();
+    recognition.current.lang = "es-MX";
+    recognition.current.onresult = (e) => { const t = e.results[0][0].transcript; setInput(t); send(t); };
+    recognition.current.onend = () => setListening(false);
+    recognition.current.start(); setListening(true);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: CARD_BG, border: "1px solid #2A2F42", borderRadius: 4, width: "100%", maxWidth: 520, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.8)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #1E2235", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 2, background: GOLD, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✦</div>
+            <div><p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: GOLD }}>Legacy AI</p><p style={{ fontSize: 10, color: MUTED, margin: 0 }}>Asistente financiero</p></div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 18, cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          {messages.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{ maxWidth: "80%", padding: "10px 14px", borderRadius: 3, background: m.role === "user" ? GOLD : "#1E2235", color: m.role === "user" ? "#0B0E18" : TEXT, fontSize: 13, lineHeight: 1.5 }}>{m.content}</div>
+            </div>
+          ))}
+          {loading && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ padding: "10px 14px", borderRadius: 3, background: "#1E2235", color: MUTED, fontSize: 13 }}>Pensando…</div></div>}
+          <div ref={messagesEnd} />
+        </div>
+        <div style={{ padding: "12px 16px", borderTop: "1px solid #1E2235", display: "flex", gap: 8, alignItems: "center" }}>
+          <input style={{ flex: 1, background: "#0F1117", border: "1px solid #2A2F42", borderRadius: 2, padding: "10px 12px", color: TEXT, fontSize: 14, outline: "none", fontFamily: "inherit" }}
+            placeholder="Escribe tu pregunta…" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send(input)} />
+          <button onClick={startListening} style={{ background: listening ? "#C0392B" : "#1E2235", border: "none", borderRadius: 2, padding: "10px 12px", color: listening ? "#fff" : MUTED, cursor: "pointer", fontSize: 16 }}>{listening ? "⏹" : "🎤"}</button>
+          <button onClick={() => send(input)} disabled={loading || !input.trim()} style={{ background: GOLD, color: "#0B0E18", border: "none", borderRadius: 2, padding: "10px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: loading || !input.trim() ? 0.5 : 1 }}>→</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Portal({ user, page, setPage, onLogout }) {
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [financials, setFinancials] = useState(null);
   const [arEntries, setArEntries] = useState([]);
-  const [qbConnected, setQbConnected] = useState(false);
+  const [showAI, setShowAI] = useState(false);
 
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
@@ -359,10 +461,7 @@ function Portal({ user, page, setPage, onLogout }) {
   useEffect(() => {
     db.get("financials", `?client_id=eq.${user.id}&order=created_at.desc&limit=1`).then(data => { if (data && data.length > 0) setFinancials(data[0]); });
     if (user.package >= 2) { db.get("ar_entries", `?client_id=eq.${user.id}&order=created_at.desc`).then(data => { setArEntries(data || []); }); }
-    db.get("qb_connections", `?client_id=eq.${user.id}`).then(data => { setQbConnected(data && data.length > 0); });
   }, [user.id, user.package]);
-
-  const connectQB = () => { window.location.href = `/api/qb-auth?client_id=${user.id}`; };
 
   const goTo = (id) => { setPage(id); setMenuOpen(false); };
 
@@ -406,15 +505,15 @@ function Portal({ user, page, setPage, onLogout }) {
             ))}
           </nav>
           <div style={{ padding: "16px 24px", borderTop: "1px solid #1E2235" }}>
-            <button onClick={qbConnected ? null : connectQB} style={{ width: "100%", background: qbConnected ? "#2CA01C22" : QB_GREEN, color: qbConnected ? "#2CA01C" : "#fff", border: qbConnected ? "1px solid #2CA01C55" : "none", borderRadius: 2, padding: "9px 12px", fontSize: 11, fontWeight: 700, cursor: qbConnected ? "default" : "pointer", letterSpacing: 0.5 }}>
-              {qbConnected ? "✓ QuickBooks Connected" : "Connect QuickBooks"}
+            <button onClick={() => setShowAI(true)} style={{ width: "100%", background: `linear-gradient(135deg, ${GOLD}22, ${GOLD}11)`, color: GOLD, border: `1px solid ${GOLD}44`, borderRadius: 2, padding: "10px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5 }}>
+              ✦ Ask Legacy AI
             </button>
           </div>
           <button onClick={onLogout} style={{ background: "none", border: "none", color: "#3A3F52", fontSize: 12, cursor: "pointer", padding: "16px 24px", textAlign: "left" }}>← Sign Out</button>
         </aside>
       )}
       <main style={{ flex: 1, overflowY: "auto", background: DARK }}>
-        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} financials={financials} arEntries={arEntries} qbConnected={qbConnected} connectQB={connectQB} />}
+        {page === "dashboard" && <Dashboard user={user} setPage={setPage} isMobile={isMobile} financials={financials} arEntries={arEntries} onOpenAI={() => setShowAI(true)} />}
         {page === "financials" && <Financials user={user} isMobile={isMobile} financials={financials} />}
         {page === "ar" && <AR user={user} isMobile={isMobile} arEntries={arEntries} setArEntries={setArEntries} />}
         {page === "profile" && <Profile user={user} isMobile={isMobile} />}
@@ -426,13 +525,17 @@ function Portal({ user, page, setPage, onLogout }) {
               <span style={{ fontSize: 16 }}>{n.icon}</span><span>{n.label}</span>
             </button>
           ))}
+          <button onClick={() => setShowAI(true)} style={{ flex: 1, padding: "12px 4px", background: "none", border: "none", borderTop: "2px solid transparent", color: GOLD, fontSize: 10, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 16 }}>✦</span><span>AI</span>
+          </button>
         </div>
       )}
+      {showAI && <AIChat user={user} financials={financials} arEntries={arEntries} onClose={() => setShowAI(false)} />}
     </div>
   );
 }
 
-function Dashboard({ user, setPage, isMobile, financials, arEntries, qbConnected, connectQB }) {
+function Dashboard({ user, setPage, isMobile, financials, arEntries, onOpenAI }) {
   const income = financials?.income || 0;
   const cogs = financials?.cogs || 0;
   const overhead = financials?.overhead || 0;
@@ -445,22 +548,18 @@ function Dashboard({ user, setPage, isMobile, financials, arEntries, qbConnected
     { label: "Net Income", value: fmt(netIncome), sub: pct(netIncome, income) + " margin", color: netIncome >= 0 ? "#1A9E6C" : "#C0392B" },
   ];
   return (
-    <div style={{ padding: isMobile ? "20px 16px 90px" : "36px 40px", maxWidth: 900 }}>
+    <div style={{ padding: isMobile ? "20px 16px 100px" : "36px 40px", maxWidth: 900 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 24 }}>
         <h1 style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, margin: 0 }}>Dashboard</h1>
         <span style={{ fontSize: 11, color: MUTED }}>{financials?.period || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
       </div>
-
-      {!qbConnected && (
-        <div style={{ background: "#2CA01C11", border: "1px solid #2CA01C44", borderRadius: 2, padding: 16, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#2CA01C", margin: "0 0 4px" }}>Connect QuickBooks</p>
-            <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Sync your financials automatically every month</p>
-          </div>
-          <button onClick={connectQB} style={{ background: QB_GREEN, color: "#fff", border: "none", borderRadius: 2, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Connect →</button>
+      <div onClick={onOpenAI} style={{ background: `linear-gradient(135deg, ${GOLD}18, ${GOLD}08)`, border: `1px solid ${GOLD}33`, borderRadius: 2, padding: "14px 18px", marginBottom: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: GOLD, margin: "0 0 3px" }}>✦ Legacy AI — Tu asistente financiero</p>
+          <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>Pregúntame sobre tus números, por voz o texto</p>
         </div>
-      )}
-
+        <span style={{ color: GOLD, fontSize: 18 }}>→</span>
+      </div>
       {!financials && <div style={{ background: "#C9A84C11", border: "1px solid #C9A84C33", borderRadius: 2, padding: 16, marginBottom: 20, fontSize: 13, color: GOLD }}>Your financials are being prepared by Legacy Tax & Strategy.</div>}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map(c => (
