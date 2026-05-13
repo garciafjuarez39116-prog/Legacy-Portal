@@ -162,6 +162,14 @@ function AdminPortal({ onLogout }) {
     setShowForm(true);
   };
 
+  const deleteClient = async (c) => {
+    if (!window.confirm(`¿Eliminar a ${c.company}? Esta acción no se puede deshacer.`)) return;
+    await db.delete("clients", c.id);
+    loadClients();
+    setSaved("Client deleted.");
+    setTimeout(() => setSaved(""), 2500);
+  };
+
   const connectQB = (c) => { window.open(`/api/qb-auth?client_id=${c.id}`, "_blank"); };
 
   const syncQB = async (c) => {
@@ -239,8 +247,8 @@ function AdminPortal({ onLogout }) {
             )}
             {loading ? <p style={{ color: MUTED, padding: 20 }}>Loading…</p> : (
               <div style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2 }}>
-                {clients.length === 0 ? <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No clients yet.</p> :
-                  clients.map(c => (
+                {clients.filter(c => c.active).length === 0 ? <p style={{ color: MUTED, padding: 20, fontSize: 13 }}>No active clients.</p> :
+                  clients.filter(c => c.active).map(c => (
                     <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #1E2235" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                         <div style={{ width: 38, height: 38, borderRadius: 2, background: c.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{c.logo}</div>
@@ -249,9 +257,10 @@ function AdminPortal({ onLogout }) {
                           <p style={{ fontSize: 11, color: MUTED, margin: 0 }}>{c.email} · Package {c.package}</p>
                         </div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: c.active ? "#1A9E6C22" : "#C0392B22", color: c.active ? "#1A9E6C" : "#C0392B" }}>{c.active ? "Active" : "Inactive"}</span>
+                          <span style={{ padding: "3px 8px", borderRadius: 2, fontSize: 10, fontWeight: 600, background: "#1A9E6C22", color: "#1A9E6C" }}>Active</span>
                           <button onClick={() => openEdit(c)} style={{ background: "#1E2235", border: "none", color: TEXT, fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Edit</button>
-                          <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: c.active ? "#C0392B" : "#1A9E6C", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>{c.active ? "Disable" : "Enable"}</button>
+                          <button onClick={() => toggleActive(c)} style={{ background: "#1E2235", border: "none", color: "#C0392B", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>Disable</button>
+                          <button onClick={() => deleteClient(c)} style={{ background: "#1E2235", border: "none", color: "#C0392B", fontSize: 11, cursor: "pointer", padding: "5px 10px", borderRadius: 2 }}>🗑 Delete</button>
                         </div>
                       </div>
                       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #1E2235", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -561,6 +570,18 @@ function Dashboard({ user, setPage, isMobile, financials, arEntries, onOpenAI })
         <span style={{ color: GOLD, fontSize: 18 }}>→</span>
       </div>
       {!financials && <div style={{ background: "#C9A84C11", border: "1px solid #C9A84C33", borderRadius: 2, padding: 16, marginBottom: 20, fontSize: 13, color: GOLD }}>Your financials are being prepared by Legacy Tax & Strategy.</div>}
+      {financials && income > 0 && (
+        <div style={{ background: "#181C27", border: "1px solid #1E2235", borderLeft: `3px solid ${netIncome >= 0 ? "#1A9E6C" : "#C0392B"}`, borderRadius: 2, padding: "16px 20px", marginBottom: 20 }}>
+          <p style={{ fontSize: 10, letterSpacing: 2, color: MUTED, margin: "0 0 8px", textTransform: "uppercase" }}>📊 Resumen del período {financials.period}</p>
+          <p style={{ fontSize: 14, color: TEXT, margin: 0, lineHeight: 1.7 }}>
+            {netIncome >= 0
+              ? `Tuviste un ingreso de ${fmt(income)} con un costo de ventas del ${pct(cogs, income)}. Tu overhead representa el ${pct(overhead, income)} de tus ingresos. Al final del período ${netIncome > income * 0.2 ? "tuviste un excelente" : "tuviste un"} ingreso neto de ${fmt(netIncome)}, equivalente a un margen del ${pct(netIncome, income)}.`
+              : `Tuviste un ingreso de ${fmt(income)}, sin embargo tus costos superaron tus ingresos. Tu ingreso neto fue negativo: ${fmt(netIncome)}. Es importante revisar tus costos de operación.`
+            }
+            {arEntries.filter(a => a.status === "Overdue").length > 0 && ` Tienes ${arEntries.filter(a => a.status === "Overdue").length} factura(s) vencida(s) por cobrar.`}
+          </p>
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
         {cards.map(c => (
           <div key={c.label} style={{ background: CARD_BG, border: "1px solid #1E2235", borderRadius: 2, padding: isMobile ? 14 : "20px 22px" }}>
